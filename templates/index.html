@@ -45,7 +45,7 @@
             <li>
                 <input type="checkbox" class="file-checkbox" value="{{ file }}">
                 <span>{{ file }}</span>
-                <a href="/uploads/{{ file }}" download>Download</a>
+                <a class="download-link" href="/uploads/{{ file }}" download>Download</a>
             </li>
             {% else %}
             <li>No files shared yet.</li>
@@ -62,8 +62,53 @@
 
         const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB chunks
         const PARALLEL_UPLOADS = 4; // Number of concurrent uploads
+        // Optional: If server expects auth token, set it here.
+        // Example: localStorage.setItem('AUTH_TOKEN', 'your-secret');
+        const AUTH_TOKEN = localStorage.getItem('AUTH_TOKEN') || '';
         
         // The 'socket = io()' connection has been removed.
+
+        function authHeaders() {
+            return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {};
+        }
+
+        function tokenizeUrl(url) {
+            if (!AUTH_TOKEN) return url;
+            const u = new URL(url, window.location.origin);
+            u.searchParams.set('token', AUTH_TOKEN);
+            return u.toString();
+        }
+
+        function buildFileItem(name) {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <input type="checkbox" class="file-checkbox" value="${name}">
+                <span>${name}</span>
+                <a class="download-link" href="${tokenizeUrl('/uploads/' + encodeURIComponent(name))}" download>Download</a>
+            `;
+            return li;
+        }
+
+        async function refreshFileList() {
+            try {
+                const res = await fetch('/files', { headers: { 'Content-Type': 'application/json', ...authHeaders() } });
+                if (!res.ok) throw new Error('Failed to fetch files');
+                const data = await res.json();
+                const list = document.getElementById('file-list');
+                list.innerHTML = '';
+                if (!data.files || data.files.length === 0) {
+                    const li = document.createElement('li');
+                    li.textContent = 'No files shared yet.';
+                    list.appendChild(li);
+                } else {
+                    data.files.forEach(name => list.appendChild(buildFileItem(name)));
+                }
+                // After rebuild, re-check all checkbox listeners
+                toggleDownloadButton();
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
         async function uploadFile(file) {
             const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -75,10 +120,22 @@
             progressBar.style.width = '0%';
             progressBar.textContent = '0%';
 
+            // Resumability: Ask server which chunks exist (if any)
+            let present = [];
+            try {
+                const statusRes = await fetch(`/upload-status?upload_id=${encodeURIComponent(uploadId)}`, { headers: authHeaders() });
+                if (statusRes.ok) {
+                    const status = await statusRes.json();
+                    present = Array.isArray(status.present) ? status.present : [];
+                }
+            } catch (e) { /* ignore */ }
+
+            const presentSet = new Set(present);
             const chunkQueue = [];
             for (let i = 0; i < totalChunks; i++) {
-                chunkQueue.push(i);
+                if (!presentSet.has(i)) chunkQueue.push(i);
             }
+            chunksUploaded = presentSet.size;
 
             const uploadWorker = async () => {
                 while (chunkQueue.length > 0) {
@@ -95,7 +152,8 @@
                                 'X-Upload-ID': uploadId,
                                 'X-File-Name': file.name,
                                 'X-Chunk-Index': chunkIndex,
-                                'X-Total-Chunks': totalChunks
+                                'X-Total-Chunks': totalChunks,
+                                ...authHeaders()
                             },
                             body: chunk
                         });
@@ -122,8 +180,8 @@
             
             // Once all workers are done, check if the upload is complete
             if (chunksUploaded === totalChunks) {
-                // Refresh the page to show the new file
-                location.reload();
+                // Refresh file list instead of reloading the page
+                await refreshFileList();
             }
         }
         
@@ -181,28 +239,34 @@
         downloadSelectedBtn.addEventListener('click', async () => {
             const selectedFiles = Array.from(fileList.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
             if (selectedFiles.length === 0) return;
-            
-            const response = await fetch('/download-zip', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filenames: selectedFiles })
-            });
 
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = 'download.zip';
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                a.remove();
-            } else {
-                alert('Error creating zip file on server.');
+            // If only one file selected, navigate directly to stream the file
+            if (selectedFiles.length === 1) {
+                const name = selectedFiles[0];
+                window.location.href = tokenizeUrl('/uploads/' + encodeURIComponent(name));
+                return;
             }
+
+            // For multiple files, submit a form POST so browser streams the response
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = tokenizeUrl('/download-zip');
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'filenames';
+            input.value = JSON.stringify(selectedFiles);
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+            form.remove();
         });
+
+        // Tokenize initial server-rendered download links if token is set
+        if (AUTH_TOKEN) {
+            document.querySelectorAll('.download-link').forEach(a => {
+                a.href = tokenizeUrl(a.getAttribute('href'));
+            });
+        }
     </script>
-</body>
-</html>
+    </body>
+    </html>

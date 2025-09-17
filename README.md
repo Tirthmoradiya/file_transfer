@@ -1,6 +1,6 @@
-# Parallel File Transfer
+# My Personal File Transfer
 
-A modern, high-performance file sharing application built with Flask that supports chunked uploads, parallel processing, and QR code sharing for easy mobile access.
+This is a personal file sharing tool I built for myself. It runs on my local network, supports large uploads with chunking and parallel transfers, and gives me a simple drag‑and‑drop UI. I also added a QR code so I can quickly open it on my phone when I need to move files between devices.
 
 ## Features
 
@@ -12,19 +12,26 @@ A modern, high-performance file sharing application built with Flask that suppor
 - **Network Discovery**: Automatically detects local IP for network sharing
 - **Production Ready**: Uses Gunicorn with Gevent for high performance
 
-## Screenshots
+## Why I built this
 
-The application provides a clean, modern interface for file sharing with drag-and-drop functionality and progress tracking.
+- I needed a quick way to move files between my laptop and phone on the same Wi‑Fi.
+- Cloud drives are overkill for quick transfers and sometimes slow.
+- I wanted control over file size limits, formats, and basic access protection on my LAN.
 
-## Installation
+## Installation (for my setup)
+
+0. uploads/ and temp/ folders are ignored for safety and these folders are auto-created on first run. If you prefer, create them manually:
+```bash
+mkdir uploads temp
+```
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
-cd file-transfer
+git clone https://github.com/Tirthmoradiya/file_transfer.git
+cd file_transfer
 ```
 
-2. Create a virtual environment:
+2. Create a virtual environment if you want to use otherwise you can skip this step:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -33,6 +40,16 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
+```
+### Optional authentication
+Server:
+```bash
+export AUTH_TOKEN="your-secret"
+python run.py
+```
+Client (browser console):
+```javascript
+localStorage.setItem('AUTH_TOKEN', 'your-secret');
 ```
 
 ## Usage
@@ -48,6 +65,33 @@ The server will start and display:
 - Local network URL for access from other devices
 - QR code for easy mobile access
 - Server status information
+
+## Performance & Transfer Speed
+
+This runs on my local network, so speed is mostly limited by Wi‑Fi/Ethernet and device disk speeds.
+
+- On Wi‑Fi 5 (AC): I usually see ~30–60 MB/s (240–560 Mbps)
+- On Wi‑Fi 6 (AX): ~60–120 MB/s (480–960 Mbps) when close to the router
+- On Gigabit Ethernet: up to ~110–115 MB/s (≈ 940 Mbps) end‑to‑end
+
+What affects speed:
+- Network quality (signal strength, interference, router bandwidth)
+- Client/server disk speed (SSD vs HDD, mobile storage speed)
+- CPU on both sides (ZIP downloads are CPU+I/O bound)
+- Settings like `CHUNK_SIZE` and `PARALLEL_UPLOADS` (for uploads)
+
+How I measure it quickly:
+1. Upload or download a large file (e.g., 2–5 GB)
+2. Note the start and end time
+3. Speed ≈ file_size_bytes / elapsed_seconds
+
+Tuning tips I use:
+- Set `PARALLEL_UPLOADS` to 2–4 for faster uploads on stable networks (I sometimes set it to 1 for simplicity)
+- Keep `CHUNK_SIZE` between 5–16 MB (5 MB works well across devices)
+- Use Ethernet for the server if possible; keep the client close to the router
+- Avoid running heavy CPU tasks while creating large ZIPs
+
+Note: Single‑file downloads are streamed directly and support resume. Multi‑file ZIP downloads are generated on the fly; resume after stopping mid‑download isn’t kept across requests unless I add a persistent ZIP cache.
 
 ### Features Overview
 
@@ -75,7 +119,7 @@ The server will start and display:
 - **Backend**: Flask with Gunicorn and Gevent
 - **Frontend**: Vanilla JavaScript with modern async/await
 - **Upload Strategy**: Chunked uploads with configurable chunk size (5MB default)
-- **Concurrency**: Parallel chunk processing (4 workers default)
+- **Concurrency**: Parallel chunk processing (1 workers default)
 - **File Storage**: Local filesystem with organized directory structure
 
 ### Configuration
@@ -136,15 +180,11 @@ python run.py
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+This is a personal project I use for myself. I’m not looking for external contributions right now. If you find it useful, feel free to fork your own copy and adapt it.
 
 ## License
 
-This project is open source and available under the [MIT License](LICENSE).
+This repository is public for reference. If I include a license file, it will be MIT; otherwise, assume it’s for personal use only.
 
 ## Troubleshooting
 
@@ -160,4 +200,4 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## Support
 
-For issues and questions, please open an issue on GitHub.
+This is something I built for my own needs, so I don’t provide support. If you have ideas or need changes, please fork it and modify as you like.
