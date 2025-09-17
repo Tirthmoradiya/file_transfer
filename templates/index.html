@@ -1,0 +1,208 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallel File Transfer</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f0f2f5; color: #1c1e21; text-align: center; padding: 40px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        #drop-zone { border: 2px dashed #ccc; border-radius: 12px; padding: 60px 20px; margin-bottom: 20px; cursor: pointer; transition: border-color 0.3s, background-color 0.3s; position: relative; }
+        #drop-zone.drag-over { border-color: #007bff; background-color: #f0f8ff; }
+        #drop-zone p { margin: 0; font-size: 1.2em; color: #666; }
+        #file-input { display: none; }
+        ul { list-style-type: none; padding: 0; }
+        li { display: flex; align-items: center; background: #f7f7f7; margin: 8px 0; padding: 12px 15px; border-radius: 8px; }
+        li span { flex-grow: 1; text-align: left; word-break: break-all; padding: 0 15px; }
+        a { text-decoration: none; color: #007bff; font-weight: 500; }
+        #progress-container { width: 100%; background-color: #ddd; border-radius: 5px; margin-top: 15px; display: none; }
+        #progress-bar { width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; text-align: center; line-height: 20px; color: white; }
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #download-selected-btn { background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; display: none; }
+    </style>
+    </head>
+<body>
+    <div class="container">
+        <h1>Share Files</h1>
+        <div id="drop-zone">
+            <p id="drop-text">Drag & Drop files here or click to select</p>
+            <div id="progress-container">
+                <div id="progress-bar">0%</div>
+            </div>
+        </div>
+        <input type="file" id="file-input" multiple>
+
+        <h2>Available Files</h2>
+        <div class="controls">
+            <div>
+                <input type="checkbox" id="select-all-checkbox">
+                <label for="select-all-checkbox">Select All</label>
+            </div>
+            <button id="download-selected-btn">Download Selected</button>
+        </div>
+        <ul id="file-list">
+            {% for file in files %}
+            <li>
+                <input type="checkbox" class="file-checkbox" value="{{ file }}">
+                <span>{{ file }}</span>
+                <a href="/uploads/{{ file }}" download>Download</a>
+            </li>
+            {% else %}
+            <li>No files shared yet.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const dropText = document.getElementById('drop-text');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+
+        const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB chunks
+        const PARALLEL_UPLOADS = 4; // Number of concurrent uploads
+        
+        // The 'socket = io()' connection has been removed.
+
+        async function uploadFile(file) {
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const uploadId = `${file.name}-${Date.now()}`;
+            let chunksUploaded = 0;
+
+            dropText.textContent = `Uploading ${file.name}...`;
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+
+            const chunkQueue = [];
+            for (let i = 0; i < totalChunks; i++) {
+                chunkQueue.push(i);
+            }
+
+            const uploadWorker = async () => {
+                while (chunkQueue.length > 0) {
+                    const chunkIndex = chunkQueue.shift();
+                    const start = chunkIndex * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE, file.size);
+                    const chunk = file.slice(start, end);
+
+                    try {
+                        const response = await fetch('/upload-chunk', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/octet-stream',
+                                'X-Upload-ID': uploadId,
+                                'X-File-Name': file.name,
+                                'X-Chunk-Index': chunkIndex,
+                                'X-Total-Chunks': totalChunks
+                            },
+                            body: chunk
+                        });
+                        if (!response.ok) throw new Error('Chunk upload failed');
+                        
+                        chunksUploaded++;
+                        const progress = Math.round((chunksUploaded / totalChunks) * 100);
+                        progressBar.style.width = `${progress}%`;
+                        progressBar.textContent = `${progress}%`;
+                    } catch (error) {
+                        console.error(`Error uploading chunk ${chunkIndex}:`, error);
+                        chunkQueue.push(chunkIndex); // Re-queue the failed chunk
+                        return;
+                    }
+                }
+            };
+
+            const workers = [];
+            for (let i = 0; i < PARALLEL_UPLOADS; i++) {
+                workers.push(uploadWorker());
+            }
+
+            await Promise.all(workers);
+            
+            // Once all workers are done, check if the upload is complete
+            if (chunksUploaded === totalChunks) {
+                // Refresh the page to show the new file
+                location.reload();
+            }
+        }
+        
+        // Event Listeners
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        
+        const handleFiles = (files) => {
+            // Use Promise.all to wait for all file uploads to complete
+            const uploadPromises = [];
+            for (const file of files) {
+                uploadPromises.push(uploadFile(file));
+            }
+            Promise.all(uploadPromises).then(() => {
+                console.log("All files processed.");
+            });
+        };
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+        });
+
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        const downloadSelectedBtn = document.getElementById('download-selected-btn');
+        const fileList = document.getElementById('file-list');
+
+        function toggleDownloadButton() {
+            const anyChecked = fileList.querySelectorAll('.file-checkbox:checked').length > 0;
+            downloadSelectedBtn.style.display = anyChecked ? 'block' : 'none';
+        }
+
+        selectAllCheckbox.addEventListener('change', (event) => {
+            fileList.querySelectorAll('.file-checkbox').forEach(checkbox => {
+                checkbox.checked = event.target.checked;
+            });
+            toggleDownloadButton();
+        });
+
+        fileList.addEventListener('change', (event) => {
+            if (event.target.matches('.file-checkbox')) {
+                if (!event.target.checked) {
+                    selectAllCheckbox.checked = false;
+                }
+                toggleDownloadButton();
+            }
+        });
+
+        downloadSelectedBtn.addEventListener('click', async () => {
+            const selectedFiles = Array.from(fileList.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
+            if (selectedFiles.length === 0) return;
+            
+            const response = await fetch('/download-zip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filenames: selectedFiles })
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'download.zip';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } else {
+                alert('Error creating zip file on server.');
+            }
+        });
+    </script>
+</body>
+</html>
