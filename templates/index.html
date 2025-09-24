@@ -65,8 +65,6 @@
         // Optional: If server expects auth token, set it here.
         // Example: localStorage.setItem('AUTH_TOKEN', 'your-secret');
         const AUTH_TOKEN = localStorage.getItem('AUTH_TOKEN') || '';
-        
-        // The 'socket = io()' connection has been removed.
 
         function authHeaders() {
             return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {};
@@ -128,7 +126,7 @@
                     const status = await statusRes.json();
                     present = Array.isArray(status.present) ? status.present : [];
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) { }
 
             const presentSet = new Set(present);
             const chunkQueue = [];
