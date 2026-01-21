@@ -37,7 +37,7 @@ if __name__ == '__main__':
         host_ip = '127.0.0.1'
 
     # 2. Set server port
-    SERVER_PORT = 5000
+    SERVER_PORT = 8000
     
     # 3. Print QR code and info
     url = f"http://{host_ip}:{SERVER_PORT}"
