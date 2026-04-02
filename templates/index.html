@@ -1,270 +1,80 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parallel File Transfer</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f0f2f5; color: #1c1e21; text-align: center; padding: 40px; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        h1, h2 { color: #333; }
-        #drop-zone { border: 2px dashed #ccc; border-radius: 12px; padding: 60px 20px; margin-bottom: 20px; cursor: pointer; transition: border-color 0.3s, background-color 0.3s; position: relative; }
-        #drop-zone.drag-over { border-color: #007bff; background-color: #f0f8ff; }
-        #drop-zone p { margin: 0; font-size: 1.2em; color: #666; }
-        #file-input { display: none; }
-        ul { list-style-type: none; padding: 0; }
-        li { display: flex; align-items: center; background: #f7f7f7; margin: 8px 0; padding: 12px 15px; border-radius: 8px; }
-        li span { flex-grow: 1; text-align: left; word-break: break-all; padding: 0 15px; }
-        a { text-decoration: none; color: #007bff; font-weight: 500; }
-        #progress-container { width: 100%; background-color: #ddd; border-radius: 5px; margin-top: 15px; display: none; }
-        #progress-bar { width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; text-align: center; line-height: 20px; color: white; }
-        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        #download-selected-btn { background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; display: none; }
-    </style>
-    </head>
+    <title>Transfer | Secure LAN Sharing</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
 <body>
     <div class="container">
-        <h1>Share Files</h1>
-        <div id="drop-zone">
-            <p id="drop-text">Drag & Drop files here or click to select</p>
-            <div id="progress-container">
-                <div id="progress-bar">0%</div>
-            </div>
-        </div>
-        <input type="file" id="file-input" multiple>
+        <header>
+            <h1>Transfer</h1>
+            <p class="subtitle">Secure high-speed file sharing on your local network</p>
+        </header>
 
-        <h2>Available Files</h2>
-        <div class="controls">
-            <div>
-                <input type="checkbox" id="select-all-checkbox">
-                <label for="select-all-checkbox">Select All</label>
-            </div>
-            <button id="download-selected-btn">Download Selected</button>
-        </div>
-        <ul id="file-list">
-            {% for file in files %}
-            <li>
-                <input type="checkbox" class="file-checkbox" value="{{ file }}">
-                <span>{{ file }}</span>
-                <a class="download-link" href="/uploads/{{ file }}" download>Download</a>
-            </li>
-            {% else %}
-            <li>No files shared yet.</li>
-            {% endfor %}
-        </ul>
+        <main>
+            <!-- Upload Section -->
+            <section class="glass-panel">
+                <div id="drop-zone">
+                    <div class="upload-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    </div>
+                    <div class="drop-text">Drop files here or click to browse</div>
+                    <div class="drop-hint">Supports large files with chunked parallel uploads</div>
+                    <input type="file" id="file-input" multiple style="display: none;">
+                </div>
+
+                <div id="active-uploads">
+                    <!-- Progress cards will appear here -->
+                </div>
+            </section>
+
+            <!-- File List Section -->
+            <section class="glass-panel">
+                <div class="list-header">
+                    <div class="search-box">
+                        <span class="search-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </span>
+                        <input type="text" id="search-input" placeholder="Search files...">
+                    </div>
+                    
+                    <div class="controls-group">
+                        <select id="sort-select" class="btn btn-ghost">
+                            <option value="mtime">Recent First</option>
+                            <option value="name">Name</option>
+                            <option value="size">Largest First</option>
+                        </select>
+                        <button id="download-selected-btn" class="btn btn-primary" style="display: none;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            Download Selected
+                        </button>
+                        <button id="delete-selected-btn" class="btn btn-danger-ghost btn-icon" style="display: none;" title="Delete Selected">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="file-grid" class="file-grid">
+                    <!-- File cards will appear here -->
+                    <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
+                        Loading files...
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer style="text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-top: 2rem;">
+            &copy; 2026 Personal File Transfer • Local LAN Only
+        </footer>
     </div>
 
-    <script>
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const dropText = document.getElementById('drop-text');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
+    <div id="toast-container"></div>
 
-        const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB chunks
-        const PARALLEL_UPLOADS = 4; // Number of concurrent uploads
-        // Optional: If server expects auth token, set it here.
-        // Example: localStorage.setItem('AUTH_TOKEN', 'your-secret');
-        const AUTH_TOKEN = localStorage.getItem('AUTH_TOKEN') || '';
-
-        function authHeaders() {
-            return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {};
-        }
-
-        function tokenizeUrl(url) {
-            if (!AUTH_TOKEN) return url;
-            const u = new URL(url, window.location.origin);
-            u.searchParams.set('token', AUTH_TOKEN);
-            return u.toString();
-        }
-
-        function buildFileItem(name) {
-            const li = document.createElement('li');
-            li.innerHTML = `
-                <input type="checkbox" class="file-checkbox" value="${name}">
-                <span>${name}</span>
-                <a class="download-link" href="${tokenizeUrl('/uploads/' + encodeURIComponent(name))}" download>Download</a>
-            `;
-            return li;
-        }
-
-        async function refreshFileList() {
-            try {
-                const res = await fetch('/files', { headers: { 'Content-Type': 'application/json', ...authHeaders() } });
-                if (!res.ok) throw new Error('Failed to fetch files');
-                const data = await res.json();
-                const list = document.getElementById('file-list');
-                list.innerHTML = '';
-                if (!data.files || data.files.length === 0) {
-                    const li = document.createElement('li');
-                    li.textContent = 'No files shared yet.';
-                    list.appendChild(li);
-                } else {
-                    data.files.forEach(name => list.appendChild(buildFileItem(name)));
-                }
-                // After rebuild, re-check all checkbox listeners
-                toggleDownloadButton();
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-        async function uploadFile(file) {
-            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            const uploadId = `${file.name}-${Date.now()}`;
-            let chunksUploaded = 0;
-
-            dropText.textContent = `Uploading ${file.name}...`;
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressBar.textContent = '0%';
-
-            // Resumability: Ask server which chunks exist (if any)
-            let present = [];
-            try {
-                const statusRes = await fetch(`/upload-status?upload_id=${encodeURIComponent(uploadId)}`, { headers: authHeaders() });
-                if (statusRes.ok) {
-                    const status = await statusRes.json();
-                    present = Array.isArray(status.present) ? status.present : [];
-                }
-            } catch (e) { }
-
-            const presentSet = new Set(present);
-            const chunkQueue = [];
-            for (let i = 0; i < totalChunks; i++) {
-                if (!presentSet.has(i)) chunkQueue.push(i);
-            }
-            chunksUploaded = presentSet.size;
-
-            const uploadWorker = async () => {
-                while (chunkQueue.length > 0) {
-                    const chunkIndex = chunkQueue.shift();
-                    const start = chunkIndex * CHUNK_SIZE;
-                    const end = Math.min(start + CHUNK_SIZE, file.size);
-                    const chunk = file.slice(start, end);
-
-                    try {
-                        const response = await fetch('/upload-chunk', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/octet-stream',
-                                'X-Upload-ID': uploadId,
-                                'X-File-Name': file.name,
-                                'X-Chunk-Index': chunkIndex,
-                                'X-Total-Chunks': totalChunks,
-                                ...authHeaders()
-                            },
-                            body: chunk
-                        });
-                        if (!response.ok) throw new Error('Chunk upload failed');
-                        
-                        chunksUploaded++;
-                        const progress = Math.round((chunksUploaded / totalChunks) * 100);
-                        progressBar.style.width = `${progress}%`;
-                        progressBar.textContent = `${progress}%`;
-                    } catch (error) {
-                        console.error(`Error uploading chunk ${chunkIndex}:`, error);
-                        chunkQueue.push(chunkIndex); // Re-queue the failed chunk
-                        return;
-                    }
-                }
-            };
-
-            const workers = [];
-            for (let i = 0; i < PARALLEL_UPLOADS; i++) {
-                workers.push(uploadWorker());
-            }
-
-            await Promise.all(workers);
-            
-            // Once all workers are done, check if the upload is complete
-            if (chunksUploaded === totalChunks) {
-                // Refresh file list instead of reloading the page
-                await refreshFileList();
-            }
-        }
-        
-        // Event Listeners
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-        
-        const handleFiles = (files) => {
-            // Use Promise.all to wait for all file uploads to complete
-            const uploadPromises = [];
-            for (const file of files) {
-                uploadPromises.push(uploadFile(file));
-            }
-            Promise.all(uploadPromises).then(() => {
-                console.log("All files processed.");
-            });
-        };
-
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-            handleFiles(e.dataTransfer.files);
-        });
-
-        fileInput.addEventListener('change', () => {
-            handleFiles(fileInput.files);
-        });
-
-        const selectAllCheckbox = document.getElementById('select-all-checkbox');
-        const downloadSelectedBtn = document.getElementById('download-selected-btn');
-        const fileList = document.getElementById('file-list');
-
-        function toggleDownloadButton() {
-            const anyChecked = fileList.querySelectorAll('.file-checkbox:checked').length > 0;
-            downloadSelectedBtn.style.display = anyChecked ? 'block' : 'none';
-        }
-
-        selectAllCheckbox.addEventListener('change', (event) => {
-            fileList.querySelectorAll('.file-checkbox').forEach(checkbox => {
-                checkbox.checked = event.target.checked;
-            });
-            toggleDownloadButton();
-        });
-
-        fileList.addEventListener('change', (event) => {
-            if (event.target.matches('.file-checkbox')) {
-                if (!event.target.checked) {
-                    selectAllCheckbox.checked = false;
-                }
-                toggleDownloadButton();
-            }
-        });
-
-        downloadSelectedBtn.addEventListener('click', async () => {
-            const selectedFiles = Array.from(fileList.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
-            if (selectedFiles.length === 0) return;
-
-            // If only one file selected, navigate directly to stream the file
-            if (selectedFiles.length === 1) {
-                const name = selectedFiles[0];
-                window.location.href = tokenizeUrl('/uploads/' + encodeURIComponent(name));
-                return;
-            }
-
-            // For multiple files, submit a form POST so browser streams the response
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = tokenizeUrl('/download-zip');
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'filenames';
-            input.value = JSON.stringify(selectedFiles);
-            form.appendChild(input);
-            document.body.appendChild(form);
-            form.submit();
-            form.remove();
-        });
-
-        // Tokenize initial server-rendered download links if token is set
-        if (AUTH_TOKEN) {
-            document.querySelectorAll('.download-link').forEach(a => {
-                a.href = tokenizeUrl(a.getAttribute('href'));
-            });
-        }
-    </script>
-    </body>
-    </html>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

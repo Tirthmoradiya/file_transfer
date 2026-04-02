@@ -1,10 +1,8 @@
 from gevent import monkey
 monkey.patch_all()
 
-import os
 import socket
 import qrcode
-import multiprocessing
 from gunicorn.app.base import BaseApplication
 
 # --- Import your Flask app instance ---

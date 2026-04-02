@@ -1,6 +1,4 @@
-from gevent import monkey
-monkey.patch_all()
-
+import sys
 import os
 import io
 import shutil
@@ -12,31 +10,50 @@ from datetime import datetime
 from flask import Flask, request, render_template, jsonify, send_file, after_this_request, send_from_directory, abort
 from werkzeug.utils import secure_filename
 
-# --- Configuration ---
+def get_resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# --- App Settings (Initial placeholders, to be set by GUI) ---
 UPLOAD_FOLDER = 'uploads'
 TEMP_FOLDER = 'temp'
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB per request (applies to chunk size)
-# Allowed file extensions (lowercase). Set to an empty set to allow all.
+AUTH_TOKEN = None
 ALLOWED_EXTENSIONS = {
     'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'zip', 'rar', '7z', 'csv', 'mp4', 'mp3', 'mkv'
 }
+MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 
-# Optional simple token auth (set AUTH_TOKEN env var). If set, clients must provide X-Auth-Token header or ?token= query.
-AUTH_TOKEN = os.environ.get('AUTH_TOKEN')
+app = Flask(__name__, 
+            template_folder=get_resource_path('templates'),
+            static_folder=get_resource_path('static'))
 
-# Cleanup settings
-TEMP_CLEANUP_MAX_AGE_SECS = 24 * 60 * 60  # Remove temp uploads older than 24 hours
+def update_app_config(upload_dir, temp_dir, auth_token=None, allowed_extensions=None, max_content_length=None):
+    global UPLOAD_FOLDER, TEMP_FOLDER, AUTH_TOKEN, ALLOWED_EXTENSIONS, MAX_CONTENT_LENGTH
+    UPLOAD_FOLDER = upload_dir
+    TEMP_FOLDER = temp_dir
+    AUTH_TOKEN = auth_token
+    
+    if allowed_extensions is not None:
+        if isinstance(allowed_extensions, str):
+            ALLOWED_EXTENSIONS = {ext.strip().lower().lstrip('.') for ext in allowed_extensions.split(',') if ext.strip()}
+        else:
+            ALLOWED_EXTENSIONS = set(allowed_extensions)
+            
+    if max_content_length is not None:
+        MAX_CONTENT_LENGTH = max_content_length
 
-# --- Create necessary folders ---
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-if not os.path.exists(TEMP_FOLDER):
-    os.makedirs(TEMP_FOLDER)
-
-# --- Flask App Initialization ---
-app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    if not os.path.exists(TEMP_FOLDER):
+        os.makedirs(TEMP_FOLDER)
+        
+    app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
 
 def _is_allowed_filename(name: str) -> bool:
@@ -115,19 +132,30 @@ def upload_chunk():
         return jsonify({"success": True, "message": "Chunk processed by another worker."})
 
     if all(i in present for i in range(total_chunks)):
-        final_path = os.path.join(UPLOAD_FOLDER, safe_filename)
-        with open(final_path, 'wb') as f_out:
-            for i in range(total_chunks):
-                part_path = os.path.join(temp_dir, str(i))
-                with open(part_path, 'rb') as f_in:
-                    f_out.write(f_in.read())
-        
+        # Attempt to "lock" the reassembly by renaming the temp directory
+        processing_dir = os.path.join(TEMP_FOLDER, f"processing_{upload_id}")
         try:
-            shutil.rmtree(temp_dir)
-        except FileNotFoundError:
-            pass
+            os.rename(temp_dir, processing_dir)
+        except OSError:
+            # Another worker already renamed it or it's gone
+            return jsonify({"success": True, "message": "File is being processed or already reassembled"})
+
+        final_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+        try:
+            with open(final_path, 'wb') as f_out:
+                for i in range(total_chunks):
+                    part_path = os.path.join(processing_dir, str(i))
+                    with open(part_path, 'rb') as f_in:
+                        f_out.write(f_in.read())
             
-        return jsonify({"success": True, "message": "File reassembled successfully"})
+            shutil.rmtree(processing_dir, ignore_errors=True)
+            return jsonify({"success": True, "message": "File reassembled successfully"})
+        except Exception as e:
+            # If reassembly fails, try to move it back so it can be retried? 
+            # Or just cleanup. For simplicity, we'll log and cleanup.
+            app.logger.exception("Error reassembling file %s", safe_filename)
+            shutil.rmtree(processing_dir, ignore_errors=True)
+            return jsonify({"error": "Failed to reassemble file"}), 500
 
     return jsonify({"success": True, "message": "Chunk received"})
 
@@ -226,11 +254,64 @@ def download_file(filename):
 def list_files():
     _require_auth()
     try:
-        files = sorted(os.listdir(app.config['UPLOAD_FOLDER']))
+        files = []
+        for filename in sorted(os.listdir(app.config['UPLOAD_FOLDER'])):
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.isfile(file_path):
+                stats = os.stat(file_path)
+                files.append({
+                    "name": filename,
+                    "size": stats.st_size,
+                    "mtime": stats.st_mtime
+                })
         return jsonify({"files": files})
     except Exception:
         app.logger.exception("Error listing files")
         return jsonify({"files": []}), 500
+
+
+@app.route('/delete', methods=['POST'])
+def delete_file():
+    _require_auth()
+    data = request.get_json(silent=True)
+    if not data or 'filename' not in data:
+        return jsonify({"error": "Filename required"}), 400
+    
+    filename = secure_filename(data['filename'])
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            return jsonify({"success": True, "message": f"Deleted {filename}"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "File not found"}), 404
+
+
+@app.route('/rename', methods=['POST'])
+def rename_file():
+    _require_auth()
+    data = request.get_json(silent=True)
+    if not data or 'old_name' not in data or 'new_name' not in data:
+        return jsonify({"error": "Old and new names required"}), 400
+    
+    old_name = secure_filename(data['old_name'])
+    new_name = secure_filename(data['new_name'])
+    
+    old_path = os.path.join(app.config['UPLOAD_FOLDER'], old_name)
+    new_path = os.path.join(app.config['UPLOAD_FOLDER'], new_name)
+    
+    if not os.path.exists(old_path):
+        return jsonify({"error": "Source file not found"}), 404
+    if os.path.exists(new_path):
+        return jsonify({"error": "Destination already exists"}), 400
+    
+    try:
+        os.rename(old_path, new_path)
+        return jsonify({"success": True, "message": f"Renamed to {new_name}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/upload-status', methods=['GET'])

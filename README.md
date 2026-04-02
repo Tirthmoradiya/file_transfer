@@ -1,203 +1,69 @@
-# My Personal File Transfer
+# Transfer | Secure LAN File sharing
 
-This is a personal file sharing tool I built for myself. It runs on my local network, supports large uploads with chunking and parallel transfers, and gives me a simple drag‑and‑drop UI. I also added a QR code so I can quickly open it on my phone when I need to move files between devices.
+**Transfer** is a high-performance, personal file sharing tool designed for local networks. It combines a robust Flask backend with a beautiful, responsive PyQt6 desktop interface, making it effortless to move files between your computer and mobile devices.
 
-## Features
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
+![Platform](https://img.shields.io/badge/platform-mac%20%7C%20windows%20%7C%20linux-lightgrey.svg)
 
-- **Chunked Upload**: Large files are split into chunks for reliable uploads
-- **Parallel Processing**: Multiple chunks uploaded simultaneously for faster transfers
-- **Drag & Drop Interface**: Modern, intuitive web interface
-- **QR Code Sharing**: Automatically generates QR codes for easy mobile access
-- **Bulk Download**: Select multiple files and download as ZIP
-- **Network Discovery**: Automatically detects local IP for network sharing
-- **Production Ready**: Uses Gunicorn with Gevent for high performance
+## 🚀 Key Features
 
-## Why I built this
+- **Responsive Desktop GUI**: A modern PyQt6 interface that automatically switches between Vertical (Mobile-style) and Horizontal (Desktop-wide) layouts.
+- **Real-time Dashboard**: Live view of shared files with automatic synchronization across all connected devices.
+- **Advanced Configuration**: Granular control over connection workers, request timeouts, and allowed file extensions.
+- **Chunked & Parallel Uploads**: Supports extremely large files by splitting them into chunks and processing them in parallel.
+- **QR Code Connectivity**: Instantly connect your phone by scanning a dynamically generated QR code.
+- **"Open in Browser" Mode**: One-click access to the full web-based file manager from your desktop.
+- **Bulk Actions**: Select multiple files to download as a single ZIP archive or delete them in batches.
 
-- I needed a quick way to move files between my laptop and phone on the same Wi‑Fi.
-- Cloud drives are overkill for quick transfers and sometimes slow.
-- I wanted control over file size limits, formats, and basic access protection on my LAN.
+## 🛠️ Tech Stack
 
-## Installation (for my setup)
+- **Frontend (Desktop)**: PyQt6 with Glassmorphism styling.
+- **Frontend (Web)**: Vanilla JS, Semantic HTML5, CSS3 Variables.
+- **Backend**: Flask with Gunicorn & Gevent for high-concurrency handling.
+- **Compression**: Native Python `zipfile` with streaming support.
 
-0. uploads/ and temp/ folders are ignored for safety and these folders are auto-created on first run. If you prefer, create them manually:
+## 📦 Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Tirthmoradiya/file_transfer.git
+   cd file_transfer
+   ```
+
+2. **Setup virtual environment**:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## 🚦 Usage
+
+### Desktop App (Recommended)
+Launch the graphical interface to configure and monitor your server:
 ```bash
-mkdir uploads temp
+python main_gui.py
 ```
+1. Select your **Uploads Directory**.
+2. Customize **Advanced Settings** (Workers, Extensions, etc.).
+3. Click **Start Server**.
+4. Scan the QR code or click **Open in Browser** to manage files.
 
-1. Clone the repository:
-```bash
-git clone https://github.com/Tirthmoradiya/file_transfer.git
-cd file_transfer
-```
-
-2. Create a virtual environment if you want to use otherwise you can skip this step:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-### Optional authentication
-Server:
-```bash
-export AUTH_TOKEN="your-secret"
-python run.py
-```
-Client (browser console):
-```javascript
-localStorage.setItem('AUTH_TOKEN', 'your-secret');
-```
-
-## Usage
-
-### Quick Start
-
-Run the application:
-```bash
-python run.py
-```
-
-The server will start and display:
-- Local network URL for access from other devices
-- QR code for easy mobile access
-- Server status information
-
-## Performance & Transfer Speed
-
-This runs on my local network, so speed is mostly limited by Wi‑Fi/Ethernet and device disk speeds.
-
-- On Wi‑Fi 5 (AC): I usually see ~30–60 MB/s (240–560 Mbps)
-- On Wi‑Fi 6 (AX): ~60–120 MB/s (480–960 Mbps) when close to the router
-- On Gigabit Ethernet: up to ~110–115 MB/s (≈ 940 Mbps) end‑to‑end
-
-What affects speed:
-- Network quality (signal strength, interference, router bandwidth)
-- Client/server disk speed (SSD vs HDD, mobile storage speed)
-- CPU on both sides (ZIP downloads are CPU+I/O bound)
-- Settings like `CHUNK_SIZE` and `PARALLEL_UPLOADS` (for uploads)
-
-How I measure it quickly:
-1. Upload or download a large file (e.g., 2–5 GB)
-2. Note the start and end time
-3. Speed ≈ file_size_bytes / elapsed_seconds
-
-Tuning tips I use:
-- Set `PARALLEL_UPLOADS` to 2–4 for faster uploads on stable networks (I sometimes set it to 1 for simplicity)
-- Keep `CHUNK_SIZE` between 5–16 MB (5 MB works well across devices)
-- Use Ethernet for the server if possible; keep the client close to the router
-- Avoid running heavy CPU tasks while creating large ZIPs
-
-Note: Single‑file downloads are streamed directly and support resume. Multi‑file ZIP downloads are generated on the fly; resume after stopping mid‑download isn’t kept across requests unless I add a persistent ZIP cache.
-
-### Features Overview
-
-#### File Upload
-- Drag and drop files onto the upload zone
-- Click to select files manually
-- Real-time progress tracking
-- Automatic chunking for large files
-- Parallel upload processing
-
-#### File Management
-- View all uploaded files
-- Individual file downloads
-- Bulk selection and ZIP download
-- Automatic file listing refresh
-
-#### Network Sharing
-- Accessible from any device on the local network
-- QR code generation for mobile devices
-- Automatic IP detection
-
-## Technical Details
-
-### Architecture
-- **Backend**: Flask with Gunicorn and Gevent
-- **Frontend**: Vanilla JavaScript with modern async/await
-- **Upload Strategy**: Chunked uploads with configurable chunk size (5MB default)
-- **Concurrency**: Parallel chunk processing (1 workers default)
-- **File Storage**: Local filesystem with organized directory structure
-
-### Configuration
-
-Key settings in the application:
-
-```python
-CHUNK_SIZE = 5 * 1024 * 1024  # 5 MB chunks
-PARALLEL_UPLOADS = 4          # Concurrent upload workers
-SERVER_PORT = 5000           # Default server port
-```
-
-### API Endpoints
-
-- `GET /` - Main application interface
-- `POST /upload-chunk` - Chunked file upload
-- `POST /download-zip` - Multi-file ZIP download
-- `GET /uploads/<filename>` - Individual file download
-
-## Development
-
-### Project Structure
-```
-file-transfer/
-├── app.py              # Main Flask application
-├── run.py              # Server startup and configuration
-├── templates/
-│   └── index.html      # Web interface
-├── uploads/            # Uploaded files (auto-created)
-├── temp/              # Temporary chunk storage (auto-created)
-├── requirements.txt    # Python dependencies
-└── README.md          # This file
-```
-
-### Running in Development
-
-For development with auto-reload:
-```bash
-export FLASK_APP=app.py
-export FLASK_ENV=development
-flask run --host=0.0.0.0 --port=5000
-```
-
-### Production Deployment
-
-The application is production-ready with Gunicorn:
+### Terminal Mode
+For headless environments:
 ```bash
 python run.py
 ```
 
-## Dependencies
+## 📄 License
 
-- **Flask**: Web framework
-- **Gunicorn**: WSGI HTTP Server
-- **Gevent**: Asynchronous networking library
-- **QRCode**: QR code generation
-- **Pillow**: Image processing for QR codes
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
+## 🤝 Support
 
-This is a personal project I use for myself. I’m not looking for external contributions right now. If you find it useful, feel free to fork your own copy and adapt it.
-
-## License
-
-This repository is public for reference. If I include a license file, it will be MIT; otherwise, assume it’s for personal use only.
-
-## Troubleshooting
-
-### Common Issues
-
-**Port already in use**: Change the `SERVER_PORT` in `run.py`
-
-**Permission errors**: Ensure the application has write permissions for `uploads/` and `temp/` directories
-
-**Large file uploads**: Adjust `CHUNK_SIZE` and `PARALLEL_UPLOADS` based on your network conditions
-
-**Network access issues**: Check firewall settings and ensure the server IP is accessible from client devices
-
-## Support
-
-This is something I built for my own needs, so I don’t provide support. If you have ideas or need changes, please fork it and modify as you like.
+This is a personal utility built for speed and convenience. If you encounter issues, please check the [Troubleshooting](DOCUMENTATION.md#troubleshooting) section in the documentation.
